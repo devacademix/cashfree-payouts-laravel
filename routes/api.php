@@ -20,6 +20,7 @@ Route::post('/payout/transfer', [PayoutController::class, 'requestTransferV2']);
 Route::get('/payout/transfer/status', [PayoutController::class, 'getTransferStatusV2']);
 Route::post('/payout/batch-transfer', [PayoutController::class, 'batchTransferV2']);
 Route::get('/payout/batch-transfer/status', [PayoutController::class, 'getBatchTransferStatusV2']);
+Route::post('/payout/webhook/v2', [PayoutController::class, 'handleWebhookV2']);
 
 // Wallet operations
 Route::get('/payout/balance', [PayoutController::class, 'getBalance']);

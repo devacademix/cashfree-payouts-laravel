@@ -1,59 +1,240 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Cashfree Payouts API (Laravel)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Production-style Laravel API service for beneficiary management, single transfer, batch transfer, transfer status tracking, and wallet operations using Cashfree Payout APIs.
 
-## About Laravel
+## Tech Stack
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- PHP / Laravel
+- MySQL or SQLite
+- Cashfree Payout APIs (V1 + V2 flows)
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Project Structure
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+- Routes: `routes/api.php`
+- Controller: `app/Http/Controllers/PayoutController.php`
+- Cashfree service: `app/Services/CashfreePayoutService.php`
+- API docs: `API_DOCS.md`
 
-## Learning Laravel
+## Prerequisites
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+- PHP 8.2+
+- Composer
+- MySQL (or SQLite)
+- Cashfree sandbox/production credentials
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## Local Setup
 
-## Laravel Sponsors
+1. Install dependencies:
+```bash
+composer install
+```
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+2. Create env and app key:
+```bash
+cp .env.example .env
+php artisan key:generate
+```
 
-### Premium Partners
+3. Configure database in `.env`:
+```env
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=your_db
+DB_USERNAME=your_user
+DB_PASSWORD=your_password
+```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+4. Configure Cashfree in `.env`:
+```env
+CASHFREE_PAYOUT_BASE_URL=https://sandbox.cashfree.com
+CASHFREE_CLIENT_ID=your_client_id
+CASHFREE_CLIENT_SECRET=your_client_secret
+CASHFREE_WEBHOOK_SECRET=your_oldest_active_client_secret
+CASHFREE_API_VERSION=2024-01-01
+```
 
-## Contributing
+5. Run migrations:
+```bash
+php artisan migrate
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+6. Start server:
+```bash
+php artisan serve
+```
 
-## Code of Conduct
+Base URL:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+`http://127.0.0.1:8000/api`
 
-## Security Vulnerabilities
+## API Headers
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Use these headers for all API calls:
+
+- `Content-Type: application/json`
+- `Accept: application/json`
+
+## Route List
+
+Run:
+
+```bash
+php artisan route:list --path=api/payout
+```
+
+Current API routes:
+
+- `POST /api/payout/beneficiary` (legacy create beneficiary)
+- `POST /api/payout/request` (legacy async payout)
+- `POST /api/payout/v2/transfer`
+- `GET /api/payout/v2/transfer/status`
+- `POST /api/payout/v2/batch-transfer`
+- `GET /api/payout/v2/batch-transfer/status`
+- `POST /api/payout/v2/beneficiary`
+- `GET /api/payout/v2/beneficiary`
+- `DELETE /api/payout/v2/beneficiary`
+- `POST /api/payout/transfer` (alias of V2 transfer)
+- `GET /api/payout/transfer/status` (alias of V2 status)
+- `POST /api/payout/batch-transfer` (alias of V2 batch)
+- `GET /api/payout/batch-transfer/status` (alias of V2 batch status)
+- `POST /api/payout/webhook/v2` (Cashfree webhook callback)
+- `GET /api/payout/balance`
+- `POST /api/payout/internal-transfer`
+- `POST /api/payout/self-withdrawal`
+
+## Core Features
+
+- Beneficiary creation/get/remove
+- Single payout transfer
+- Batch payout transfer
+- Transfer and batch status checks
+- Wallet balance
+- Internal wallet transfer
+- Self withdrawal
+- Webhook V2 signature verification and event reconciliation
+- Idempotency handling for transfer and batch operations
+
+## Webhook V2
+
+Endpoint:
+
+- `POST /api/payout/webhook/v2`
+
+Headers required from Cashfree:
+
+- `x-webhook-signature`
+- `x-webhook-timestamp`
+
+Signature verification:
+
+- Server computes `base64(HMAC_SHA256(timestamp + rawBody, CASHFREE_WEBHOOK_SECRET))`
+- Uses constant-time compare with `x-webhook-signature`
+
+Handled transfer events:
+
+- `TRANSFER_ACKNOWLEDGED` -> `SUCCESS`
+- `TRANSFER_SUCCESS` -> `SUCCESS`
+- `TRANSFER_FAILED` -> `FAILED`
+- `TRANSFER_REJECTED` -> `FAILED`
+- `TRANSFER_REVERSED` -> `REVERSED`
+
+Handled batch events:
+
+- `BULK_TRANSFER_REJECTED` -> batch status `FAILED`
+
+## API Details
+
+Detailed endpoint request/response examples and validations are documented in:
+
+- `API_DOCS.md`
+
+## Postman Testing Flow (Recommended)
+
+1. Create beneficiary:
+- `POST /api/payout/v2/beneficiary`
+
+2. Send single payment:
+- `POST /api/payout/transfer`
+
+3. Check single transaction status:
+- `GET /api/payout/transfer/status?transfer_id=...`
+
+4. Send bulk payment:
+- `POST /api/payout/batch-transfer`
+
+5. Check batch status:
+- `GET /api/payout/batch-transfer/status?batch_transfer_id=...`
+
+6. Wallet checks:
+- `GET /api/payout/balance`
+- `POST /api/payout/internal-transfer`
+- `POST /api/payout/self-withdrawal`
+
+## Idempotency Notes
+
+- Single transfer APIs are idempotent by `transfer_id`.
+- Batch transfer APIs are idempotent by `batch_transfer_id`.
+- Reusing same IDs with same payload returns existing operation.
+- Reusing transfer ID with different legacy payout payload can return `409`.
+
+## Status Lifecycle
+
+Payout statuses:
+
+- `INITIATED`
+- `PENDING`
+- `PROCESSING`
+- `SUCCESS`
+- `FAILED`
+- `REVERSED`
+
+Terminal statuses:
+
+- `SUCCESS`
+- `FAILED`
+- `REVERSED`
+
+## Error Handling Guide
+
+- `422`: validation failure (missing fields, invalid format, unknown `bene_id`)
+- `409`: duplicate ID conflict with mismatched payload
+- `500`: Cashfree credentials/config/network/external API issue
+
+If you get `500`, verify:
+
+- `CASHFREE_PAYOUT_BASE_URL`
+- `CASHFREE_CLIENT_ID`
+- `CASHFREE_CLIENT_SECRET`
+- internet connectivity to Cashfree host
+
+## Useful Commands
+
+Run tests:
+
+```bash
+php artisan test
+```
+
+Clear caches:
+
+```bash
+php artisan optimize:clear
+```
+
+View logs:
+
+```bash
+tail -f storage/logs/laravel.log
+```
+
+## Deployment Notes
+
+- Set `APP_ENV=production`
+- Set `APP_DEBUG=false`
+- Configure production Cashfree credentials and base URL
+- Run `php artisan config:cache` and `php artisan route:cache`
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Project-specific license as defined by repository owner.

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use App\Services\CashfreePayoutService;
 use App\Models\Beneficiary;
@@ -19,6 +20,40 @@ class PayoutController extends Controller
     public function __construct(CashfreePayoutService $cashfree)
     {
         $this->cashfree = $cashfree;
+    }
+
+    /**
+     * Cashfree Payouts Webhook V2 receiver.
+     */
+    public function handleWebhookV2(Request $request)
+    {
+        $signature = (string) $request->header('x-webhook-signature', '');
+        $timestamp = (string) $request->header('x-webhook-timestamp', '');
+        $rawBody = (string) $request->getContent();
+
+        if (! $this->isValidWebhookSignature($signature, $timestamp, $rawBody)) {
+            return response()->json([
+                'message' => 'Invalid webhook signature',
+            ], 401);
+        }
+
+        $payload = json_decode($rawBody, true);
+
+        if (! is_array($payload)) {
+            return response()->json([
+                'message' => 'Invalid webhook payload',
+            ], 400);
+        }
+
+        $eventType = strtoupper((string) ($payload['type'] ?? ''));
+        $eventTime = (string) ($payload['event_time'] ?? '');
+        $data = is_array($payload['data'] ?? null) ? $payload['data'] : [];
+
+        $this->applyWebhookEvent($eventType, $eventTime, $data, $payload);
+
+        return response()->json([
+            'received' => true,
+        ]);
     }
 
     /**
@@ -446,6 +481,127 @@ class PayoutController extends Controller
         return response()->json([
             'data' => $response,
         ]);
+    }
+
+    private function applyWebhookEvent(string $eventType, string $eventTime, array $data, array $payload): void
+    {
+        if (in_array($eventType, [
+            'TRANSFER_ACKNOWLEDGED',
+            'TRANSFER_SUCCESS',
+            'TRANSFER_FAILED',
+            'TRANSFER_REVERSED',
+            'TRANSFER_REJECTED',
+        ], true)) {
+            $this->reconcileTransferFromWebhook($eventType, $eventTime, $data, $payload);
+            return;
+        }
+
+        if ($eventType === 'BULK_TRANSFER_REJECTED') {
+            $this->reconcileBatchFromWebhook($eventTime, $data, $payload);
+            return;
+        }
+
+        Log::info('Unhandled Cashfree webhook V2 event', [
+            'event_type' => $eventType,
+            'event_time' => $eventTime,
+        ]);
+    }
+
+    private function reconcileTransferFromWebhook(string $eventType, string $eventTime, array $data, array $payload): void
+    {
+        $transferId = (string) ($data['transfer_id'] ?? '');
+
+        if ($transferId === '') {
+            Log::warning('Cashfree webhook V2 transfer event missing transfer_id', [
+                'event_type' => $eventType,
+                'event_time' => $eventTime,
+            ]);
+            return;
+        }
+
+        $payout = Payout::where('transfer_id', $transferId)->first();
+
+        if (! $payout) {
+            Log::warning('Cashfree webhook V2 transfer not found in local DB', [
+                'transfer_id' => $transferId,
+                'event_type' => $eventType,
+            ]);
+            return;
+        }
+
+        $mappedStatus = match ($eventType) {
+            'TRANSFER_ACKNOWLEDGED', 'TRANSFER_SUCCESS' => Payout::STATUS_SUCCESS,
+            'TRANSFER_FAILED', 'TRANSFER_REJECTED' => Payout::STATUS_FAILED,
+            'TRANSFER_REVERSED' => Payout::STATUS_REVERSED,
+            default => $payout->status,
+        };
+
+        $reason = (string) ($data['status_description'] ?? '');
+        $reason = $reason !== ''
+            ? $reason
+            : ((string) ($data['status_code'] ?? ''));
+        $isFailure = in_array($mappedStatus, [Payout::STATUS_FAILED, Payout::STATUS_REVERSED], true);
+
+        $payout->update([
+            'reference_id' => $data['cf_transfer_id'] ?? $payout->reference_id,
+            'status' => $mappedStatus,
+            'failure_reason' => $isFailure ? ($reason !== '' ? $reason : $payout->failure_reason) : null,
+            'raw_response' => [
+                'source' => 'cashfree_webhook_v2',
+                'event_type' => $eventType,
+                'event_time' => $eventTime,
+                'payload' => $payload,
+            ],
+        ]);
+    }
+
+    private function reconcileBatchFromWebhook(string $eventTime, array $data, array $payload): void
+    {
+        $batchTransferId = (string) ($data['batch_transfer_id'] ?? '');
+
+        if ($batchTransferId === '') {
+            Log::warning('Cashfree webhook V2 batch event missing batch_transfer_id', [
+                'event_time' => $eventTime,
+            ]);
+            return;
+        }
+
+        $batch = PayoutBatch::where('batch_transfer_id', $batchTransferId)->first();
+
+        if (! $batch) {
+            Log::warning('Cashfree webhook V2 batch transfer not found in local DB', [
+                'batch_transfer_id' => $batchTransferId,
+            ]);
+            return;
+        }
+
+        $batch->update([
+            'reference_id' => $data['cf_batch_transfer_id'] ?? $batch->reference_id,
+            'status' => Payout::STATUS_FAILED,
+            'raw_response' => [
+                'source' => 'cashfree_webhook_v2',
+                'event_type' => 'BULK_TRANSFER_REJECTED',
+                'event_time' => $eventTime,
+                'payload' => $payload,
+            ],
+        ]);
+    }
+
+    private function isValidWebhookSignature(string $signature, string $timestamp, string $rawBody): bool
+    {
+        if ($signature === '' || $timestamp === '' || $rawBody === '') {
+            return false;
+        }
+
+        $secret = (string) config('cashfree.webhook_secret');
+
+        if ($secret === '') {
+            return false;
+        }
+
+        $generated = base64_encode(hash_hmac('sha256', $timestamp . $rawBody, $secret, true));
+
+        return hash_equals($generated, $signature);
     }
 
     public function getBalance()
